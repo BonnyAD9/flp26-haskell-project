@@ -18,11 +18,11 @@ where
 import Control.Exception (IOException, try)
 import Data.Maybe (fromMaybe)
 import SOLTest.Types
+import System.Directory (doesFileExist)
 import System.Exit (ExitCode (..))
 import System.IO (hClose, hPutStr)
 import System.IO.Temp (withSystemTempFile)
 import System.Process (proc, readCreateProcessWithExitCode)
-import System.Directory (doesFileExist)
 
 -- ---------------------------------------------------------------------------
 -- Public API
@@ -102,8 +102,40 @@ executeExecuteOnly interpPath test =
 -- FLP: Implement this function. You'll use @withTempSource@ here.
 executeCombined :: FilePath -> FilePath -> TestCaseDefinition -> IO TestCaseReport
 executeCombined parserPath interpPath test = do
-  -- ?
-  return undefined
+  (exitCode, pOut, pErr) <- runParser parserPath (tcdSourceCode test)
+  case exitCode of
+    ExitSuccess -> executeCombined2 interpPath pOut pErr test
+    ExitFailure code ->
+      return
+        TestCaseReport
+          { tcrResult = ParseFail,
+            tcrParserExitCode = Just code,
+            tcrParserStdout = Just pOut,
+            tcrParserStderr = Just pErr,
+            tcrInterpreterExitCode = Nothing,
+            tcrInterpreterStdout = Nothing,
+            tcrInterpreterStderr = Nothing,
+            tcrDiffOutput = Nothing
+          }
+
+-- | Execute the interpreter path of the combined task.
+executeCombined2 :: FilePath -> String -> String -> TestCaseDefinition -> IO TestCaseReport
+executeCombined2 interPath pOut pErr test = withTempSource pOut $ \tmpPath -> do
+  (exitCode, iOut, iErr) <- runInterpreter interPath tmpPath (tcdStdinFile test)
+  let code = exitCodeToInt exitCode
+      expectedCodes = fromMaybe [] (tcdExpectedInterpreterExitCodes test)
+  (result, diffOut) <- checkInterpreterResult code expectedCodes iOut (tcdExpectedStdoutFile test)
+  return
+    TestCaseReport
+      { tcrResult = result,
+        tcrParserExitCode = Just 0,
+        tcrInterpreterExitCode = Just code,
+        tcrParserStdout = Just pOut,
+        tcrParserStderr = Just pErr,
+        tcrInterpreterStdout = Just iOut,
+        tcrInterpreterStderr = Just iErr,
+        tcrDiffOutput = diffOut
+      }
 
 -- ---------------------------------------------------------------------------
 -- Process wrappers
@@ -157,7 +189,12 @@ checkInterpreterResult ::
   -- | Path to the @.out@ file, if present.
   Maybe FilePath ->
   IO (TestResult, Maybe String)
-checkInterpreterResult actualCode expectedCodes iOut mOutFile = undefined
+checkInterpreterResult 0 expectedCodes iOut (Just outFile)
+  | 0 `elem` expectedCodes = runDiffOnOutput iOut outFile
+  | otherwise = return (IntFail, Nothing)
+checkInterpreterResult code expectedCodes _ _
+  | code `elem` expectedCodes = return (Passed, Nothing)
+  | otherwise = return (IntFail, Nothing)
 
 -- | Write a string to a temporary file and pass its path to an action.
 -- The file is deleted when the action returns.
@@ -173,7 +210,13 @@ withTempSource content action =
 --
 -- FLP: Implement this function. It will start similarly to @withTempSource@.
 runDiffOnOutput :: String -> FilePath -> IO (TestResult, Maybe String)
-runDiffOnOutput iOut outFile = undefined
+runDiffOnOutput iOut outFile =
+  withSystemTempFile "diff.diff" $ \tmpPath tmpHandle -> do
+    hPutStr tmpHandle iOut
+    hClose tmpHandle
+    (ec, diff) <- runDiff tmpPath outFile
+    let state = if ec == ExitSuccess then Passed else DiffFail
+    return (state, Just diff)
 
 -- | Ensure an executable path is provided and the file is executable,
 -- then run an action with it.  Returns 'Left' 'CannotExecute' if the
@@ -207,9 +250,8 @@ checkExecutable path = do
   result <- try (doesFileExist path) :: IO (Either IOException Bool)
   case result of
     Left err -> return (Just (UnexecutedReason CannotExecute (Just (show err))))
-    Right False -> undefined -- ???
-    Right True -> undefined -- ???
-  return Nothing -- this probably won't be here
+    Right False -> return $ Just $ UnexecutedReason CannotExecute $ Just "No such file."
+    Right True -> return Nothing
 
 -- | Convert 'ExitCode' to an 'Int'.
 exitCodeToInt :: ExitCode -> Int
