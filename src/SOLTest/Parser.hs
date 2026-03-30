@@ -78,7 +78,24 @@ emptyHeader =
 --
 -- FLP: Implement this function.
 splitHeaderBody :: String -> ([String], String)
-splitHeaderBody content = undefined
+splitHeaderBody content
+  | null h = ([], body)
+  | otherwise = (h : header, body)
+  where
+    (h, header, body) = splitHeaderBody2 content
+
+-- | Partially split to header and body.
+--
+-- The first header is in the first argument of tuple.
+splitHeaderBody2 :: String -> (String, [String], String)
+splitHeaderBody2 [] = ("", [], [])
+splitHeaderBody2 ('\n' : '\n' : s) = ("", [], s)
+splitHeaderBody2 ('\n' : s) = ("", sh : h, b)
+  where
+    (sh, h, b) = splitHeaderBody2 s
+splitHeaderBody2 (c : s) = (c : sh, h, b)
+  where
+    (sh, h, b) = splitHeaderBody2 s
 
 -- ---------------------------------------------------------------------------
 -- Header line parsing
@@ -96,7 +113,11 @@ parseHeaderLine hdr line
   | "*** " `isPrefixOf` line =
       let val = trim (drop 4 line)
        in Right hdr {phDescription = Just val}
-  -- ???
+  | "+++ " `isPrefixOf` line = Right hdr {phCategory = Just $ trim $ drop 4 line}
+  | "--- " `isPrefixOf` line = Right hdr {phTags = trim (drop 4 line) : phTags hdr}
+  | ">>> " `isPrefixOf` line = Right hdr {phWeight = Just $ read $ trim $ drop 4 line}
+  | "!C! " `isPrefixOf` line = Right hdr {phParserCodes = read (trim $ drop 4 line) : phParserCodes hdr}
+  | "!I! " `isPrefixOf` line = Right hdr {phInterpreterCodes = read (trim $ drop 4 line) : phInterpreterCodes hdr}
   | otherwise = Right hdr -- unknown or comment line: skip
 
 -- | Parse all header lines into a 'ParsedHeader'.
