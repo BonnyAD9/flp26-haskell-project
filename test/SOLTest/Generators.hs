@@ -23,7 +23,8 @@ import SOLTest.Types
       TestCaseDefinition(..),
       TestCaseReport(..),
       TestCaseType(..),
-      TestResult(..) )
+      TestResult(..),
+      TestCaseFile(..) )
 import Test.QuickCheck
 
 -- ---------------------------------------------------------------------------
