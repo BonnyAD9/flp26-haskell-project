@@ -211,7 +211,9 @@ parseTestFile tcf content = do
 --
 -- FLP: Implement this function.
 buildExitCodes :: TestCaseType -> ParsedHeader -> (Maybe [Int], Maybe [Int])
-buildExitCodes = undefined
+buildExitCodes ParseOnly ph = (Just $ phParserCodes ph, Nothing)
+buildExitCodes ExecuteOnly ph = (Nothing, Just $ phInterpreterCodes ph)
+buildExitCodes Combined ph = (Just $ phParserCodes ph, Just $ phInterpreterCodes ph)
 
 -- ---------------------------------------------------------------------------
 -- Utilities
