@@ -12,8 +12,7 @@ module SOLTest.Report
   )
 where
 
-import Data.Map
-import Data.Map.Strict (Map)
+import Data.Map.Strict (Map, empty, foldl', fromList, insertWith, lookup, singleton, toList, union)
 import SOLTest.Types
 
 -- ---------------------------------------------------------------------------
@@ -72,9 +71,9 @@ groupByCategory definitions results =
 -- | Inner implementation of groupByCategory. Incrementaly builds the resulting map.
 groupByCategory2 :: Map String TestCategory -> [(String, TestCaseReport)] -> Map String CategoryReport -> Map String CategoryReport
 groupByCategory2 _ [] res = res
-groupByCategory2 tcm rr@((n, r) : _) res =
+groupByCategory2 tcm rr@((n, _) : _) res =
   groupByCategory3 tcm rr res $
-    Data.Map.lookup n tcm
+    Data.Map.Strict.lookup n tcm
 
 -- | Inner implementation of groupByCategory2. Takes the TestCategory as maybe.
 groupByCategory3 :: Map String TestCategory -> [(String, TestCaseReport)] -> Map String CategoryReport -> Maybe TestCategory -> Map String CategoryReport
@@ -82,6 +81,7 @@ groupByCategory3 tcm (_ : rr) res Nothing = groupByCategory2 tcm rr res
 groupByCategory3 tcm ((n, r) : rr) res (Just c) =
   groupByCategory2 tcm rr $
     insertWith combineReports c (makeCategoryReport n r) res
+groupByCategory3 _ [] res _ = res
 
 -- | Combines to category reports.
 combineReports :: CategoryReport -> CategoryReport -> CategoryReport
