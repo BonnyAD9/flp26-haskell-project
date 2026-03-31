@@ -1,6 +1,11 @@
 # Haskell project FLP
 
-I had to modify tests because they didn't import required types.
+The project is available on
+[GitHub](https://github.com/BonnyAD9/flp26-haskell-project).
+
+No AI tools were used in this project.
+
+I had to modify tests because they didn't import all required items.
 
 I'm not sure if my implementation of `computeStats` and `makeHistogram` in
 `Report.hs` is what is expected. The descriptions say that I should use the
