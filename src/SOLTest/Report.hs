@@ -8,10 +8,11 @@ module SOLTest.Report
     groupByCategory,
     computeStats,
     computeHistogram,
-    rateToBin
+    rateToBin,
   )
 where
 
+import Data.Map
 import Data.Map.Strict (Map)
 import SOLTest.Types
 
@@ -62,7 +63,38 @@ groupByCategory ::
   [TestCaseDefinition] ->
   Map String TestCaseReport ->
   Map String CategoryReport
-groupByCategory definitions results = undefined
+groupByCategory definitions results =
+  groupByCategory2
+    (fromList $ Prelude.map (\x -> (tcdName x, tcdCategory x)) definitions)
+    (toList results)
+    empty
+
+-- | Inner implementation of groupByCategory. Incrementaly builds the resulting map.
+groupByCategory2 :: Map String TestCategory -> [(String, TestCaseReport)] -> Map String CategoryReport -> Map String CategoryReport
+groupByCategory2 _ [] res = res
+groupByCategory2 tcm rr@((n, r) : _) res =
+  groupByCategory3 tcm rr res $
+    Data.Map.lookup n tcm
+
+-- | Inner implementation of groupByCategory2. Takes the TestCategory as maybe.
+groupByCategory3 :: Map String TestCategory -> [(String, TestCaseReport)] -> Map String CategoryReport -> Maybe TestCategory -> Map String CategoryReport
+groupByCategory3 tcm (_ : rr) res Nothing = groupByCategory2 tcm rr res
+groupByCategory3 tcm ((n, r) : rr) res (Just c) =
+  groupByCategory2 tcm rr $
+    insertWith combineReports c (makeCategoryReport n r) res
+
+-- | Combines to category reports.
+combineReports :: CategoryReport -> CategoryReport -> CategoryReport
+combineReports (CategoryReport atp ap ar) (CategoryReport btp bp br) =
+  CategoryReport (atp + btp) (ap + bp) $ union ar br
+
+-- | Creates category report from test case report.
+makeCategoryReport :: String -> TestCaseReport -> CategoryReport
+makeCategoryReport n tcr = case tcrResult tcr of
+  Passed -> CategoryReport 1 1 r
+  _ -> CategoryReport 1 0 r
+  where
+    r = singleton n tcr
 
 -- ---------------------------------------------------------------------------
 -- Statistics
@@ -81,7 +113,17 @@ computeStats ::
   -- | Category reports (Nothing in dry-run mode).
   Maybe (Map String CategoryReport) ->
   TestStats
-computeStats foundCount loadedCount selectedCount mCategoryResults = undefined
+computeStats foundCount loadedCount selectedCount Nothing =
+  TestStats foundCount loadedCount selectedCount 0 empty
+computeStats fc lc sc (Just cr) = TestStats fc lc sc (countAllPassed cr) $ computeHistogram cr
+
+-- | Count the number of passed tests inside category reports.
+countAllPassed :: Map String CategoryReport -> Int
+countAllPassed = foldl' (\c m -> c + countPassed m) 0
+
+-- | Count the number of passed test insie category report.
+countPassed :: CategoryReport -> Int
+countPassed = foldl' (\c m -> c + if tcrResult m == Passed then 1 else 0) 0 . crTestResults
 
 -- ---------------------------------------------------------------------------
 -- Histogram
@@ -99,7 +141,10 @@ computeStats foundCount loadedCount selectedCount mCategoryResults = undefined
 --
 -- FLP: Implement this function.
 computeHistogram :: Map String CategoryReport -> Map String Int
-computeHistogram categories = undefined
+computeHistogram = foldl' (\h cr -> insertWith (+) (rateToBin $ getRate cr) 1 h) empty
+
+getRate :: CategoryReport -> Double
+getRate cr = (fromIntegral . countPassed) cr / (fromIntegral . length . crTestResults) cr
 
 -- | Map a pass rate in @[0, 1]@ to a histogram bin key.
 --
